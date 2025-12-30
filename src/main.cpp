@@ -1,18 +1,22 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+#include "config.h"
+#include "wifi_manager.h"
+#include "http_server.h"
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    Serial.begin(115200);
+    delay(1000);
+
+    Serial.println();
+    Serial.println("=== Sound Node starting ===");
+
+    wifi_init();
+    http_server_init();
+
+    Serial.println("HTTP server started");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    http_server_handle();
 }
