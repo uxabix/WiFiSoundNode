@@ -3,8 +3,6 @@
 #include "config.h"
 #include "wifi_manager.h"
 #include "http_server.h"
-#include "audio_engine.h"
-
 
 void setup() {
     Serial.begin(115200);
@@ -14,7 +12,6 @@ void setup() {
     Serial.println("=== Sound Node starting ===");
 
     wifi_init();
-    audio_init();
     http_server_init();
 
     Serial.println("HTTP server started");
