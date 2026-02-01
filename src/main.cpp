@@ -6,12 +6,6 @@
 
 #include <FS.h>
 #include <LittleFS.h>
-#include "WAVFileReader.h"
-#include "DACOutput.h"
-#include "TestToneSource.h"
-
-SampleSource *sampleSource;
-DACOutput *output;
 
 
 void setup() {
@@ -26,27 +20,17 @@ void setup() {
 
     Serial.println("HTTP server started");
 
-    if (!LittleFS.begin(true)) {
-        Serial.println("LittleFS mount failed");
-        return;
-    }
+    // if (!LittleFS.begin(true)) {
+    //     Serial.println("LittleFS mount failed");
+    //     return;
+    // }
 
-    Serial.println("LittleFS mounted");
+    // Serial.println("LittleFS mounted");
 
-    if (!LittleFS.exists("/sample.wav")) {
-        Serial.println("sample.wav not found in LittleFS");
-        return;
-    }
-
-    Serial.println("Created sample source");
-
-    // sampleSource = new WAVFileReader("/sample.wav");
-    sampleSource = new TestToneSource(22050);
-
-    Serial.println("Starting I2S Output");
-    output = new DACOutput();
-    output->setVolume(0.1f);
-    output->start(sampleSource);
+    // if (!LittleFS.exists("/sample.wav")) {
+    //     Serial.println("sample.wav not found in LittleFS");
+    //     return;
+    // }
 }
 
 void loop() {
