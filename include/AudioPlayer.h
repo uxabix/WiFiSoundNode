@@ -8,6 +8,7 @@ public:
     AudioPlayer(int bck, int ws, int dout);
     // Start playback asynchronously; returns false if already playing or on error
     bool playFile(const String &filename);
+    bool playRandom(const char* directory = "/");
     // Request stop and wait for playback task to end
     void stop();
     // Is audio currently playing

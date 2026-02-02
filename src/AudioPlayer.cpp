@@ -29,7 +29,8 @@ void AudioPlayer::playTask(void* pvParameters) {
         size_t bytesRead = file.read(buffer, BUF_SIZE);
         if (bytesRead == 0) break;
         size_t bytesWritten = 0;
-        i2s_write(I2S_NUM_0, buffer, bytesRead, &bytesWritten, portMAX_DELAY);
+        // avoid indefinite blocking in case DMA is busy
+        i2s_write(I2S_NUM_0, buffer, bytesRead, &bytesWritten, pdMS_TO_TICKS(100));
         // allow other tasks to run
         vTaskDelay(1);
     }
@@ -76,14 +77,13 @@ bool AudioPlayer::playFile(const String &filename){
     params->self = this;
     params->filename = filename;
 
-    BaseType_t res = xTaskCreatePinnedToCore(
+    BaseType_t res = xTaskCreate(
         playTask,
         "AudioPlay",
-        8192,
+        4096,
         params,
         1,
-        &_taskHandle,
-        1
+        &_taskHandle
     );
 
     if (res != pdPASS) {
@@ -93,6 +93,60 @@ bool AudioPlayer::playFile(const String &filename){
     }
 
     return true;
+}
+
+static bool hasWavExtension(const String& name) {
+    return name.endsWith(".wav");
+}
+
+bool AudioPlayer::playRandom(const char* directory) {
+    if (_taskHandle != nullptr) return false; // already playing
+
+    File dir = LittleFS.open(directory);
+    if (!dir || !dir.isDirectory()) {
+        return false;
+    }
+
+    // 1. Get count of .wav files
+    int fileCount = 0;
+    File file = dir.openNextFile();
+    while (file) {
+        if (!file.isDirectory() && hasWavExtension(file.name())) {
+            fileCount++;
+        }
+        file = dir.openNextFile();
+    }
+
+    if (fileCount == 0) {
+        return false;
+    }
+
+    // 2. Choose random index
+    int targetIndex = random(fileCount);
+
+    // 3. Find and play the file at that index
+    dir.rewindDirectory();
+    file = dir.openNextFile();
+
+    int index = 0;
+    String selectedFile;
+
+    while (file) {
+        if (!file.isDirectory() && hasWavExtension(file.name())) {
+            if (index == targetIndex) {
+                selectedFile = String(directory) + "/" + file.name();
+                break;
+            }
+            index++;
+        }
+        file = dir.openNextFile();
+    }
+
+    if (selectedFile.isEmpty()) {
+        return false;
+    }
+
+    return playFile(selectedFile);
 }
 
 void AudioPlayer::stop(){

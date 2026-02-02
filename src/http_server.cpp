@@ -52,14 +52,32 @@ void handle_play() {
     server.send(200, "text/plain", "Playing " + filename);
 }
 
+void handle_play_random() {
+    if (audioPlayer && audioPlayer->playRandom()) {
+        server.send(200, "text/plain", "Random sound playing");
+    } else {
+        server.send(500, "text/plain", "Failed to play random sound");
+    }
+}
+
+void handle_not_found() {
+    String msg = "404 Not Found\nURI: ";
+    msg += server.uri();
+    msg += "\n";
+    server.send(404, "text/plain", msg);
+    Serial.print("Not found: ");
+    Serial.println(server.uri());
+}
+
 void handle_stop() {
     if (!audioPlayer) {
         server.send(500, "text/plain", "AudioPlayer not initialized");
         return;
     }
 
-    // TODO: Implement stop functionality in AudioPlayer class
-    server.send(200, "text/plain", "Stop");
+    audioPlayer->stop();
+    Serial.println("Stop requested");
+    server.send(200, "text/plain", "Stopped");
 }
 
 void http_server_init(AudioPlayer& player) {
@@ -68,6 +86,8 @@ void http_server_init(AudioPlayer& player) {
     server.on("/list", HTTP_GET, handle_list);
     server.on("/play", HTTP_GET, handle_play);
     server.on("/stop", HTTP_GET, handle_stop);
+    server.on("/play_random", HTTP_GET, handle_play_random);
+    server.onNotFound(handle_not_found);
 
     server.begin();
     Serial.println("HTTP server started");
