@@ -1,85 +1,224 @@
 #include "AudioPlayer.h"
-#include <driver/i2s.h>
 #include <LittleFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <cstring>
 
-struct PlayTaskParams {
+struct TaskArgs {
     AudioPlayer* self;
-    char* filename; // heap-allocated C-string to avoid String overhead in task
+    char* filename;
 };
 
-void AudioPlayer::playTask(void* pvParameters) {
-    PlayTaskParams* params = static_cast<PlayTaskParams*>(pvParameters);
-    AudioPlayer* self = params->self;
-    char* filename = params->filename;
-    // take ownership of filename and free params container
-    delete params;
-
-    File file = LittleFS.open(filename, "r");
-    if (!file) {
-        self->_taskHandle = nullptr;
-        free(filename);
-        self->stopI2S();
-        self->amplifierOff();
-        vTaskDelete(nullptr);
-        return;
-    }
-
-    self->startI2S();
-    self->amplifierOn();
-
-    const size_t BUF_SIZE = 256; // smaller buffer = lower RAM usage
-    uint8_t buffer[BUF_SIZE];
-
-    while (file.available() && !self->_stopRequested) {
-        size_t bytesRead = file.read(buffer, BUF_SIZE);
-        if (bytesRead == 0) break;
-        size_t bytesWritten = 0;
-        // avoid indefinite blocking in case DMA is busy
-        i2s_write(I2S_NUM_0, buffer, bytesRead, &bytesWritten, pdMS_TO_TICKS(100));
-        // allow other tasks to run
-        vTaskDelay(1);
-    }
-
-    file.close();
-    self->stopI2S();
-    self->amplifierOff();
-    free(filename);
-    self->_stopRequested = false;
-    self->_taskHandle = nullptr;
-    vTaskDelete(nullptr);
-}
-
-AudioPlayer::AudioPlayer(int bck, int ws, int dout, int ampSdPin) 
-    : _bck(bck), _ws(ws), _dout(dout), _ampSdPin(ampSdPin) {
+AudioPlayer::AudioPlayer(int bck, int ws, int dout, int ampSdPin)
+    : _bck(bck), _ws(ws), _dout(dout), _ampSdPin(ampSdPin)
+{
     pinMode(_ampSdPin, OUTPUT);
-    amplifierOff();  // keep amplifier off by default to save power
-    initI2S();  // initialize I2S driver once at startup
+    amplifierOff();
 }
 
-void AudioPlayer::initI2S(){
-    i2s_config_t i2s_config = {
+void AudioPlayer::initI2S() {
+    i2s_config_t cfg = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-        .sample_rate = 44100,
+        .sample_rate = 22050,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
         .communication_format = I2S_COMM_FORMAT_I2S_MSB,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 6, // balanced: reduced from 8 for ~2KB savings
-        .dma_buf_len = 256, // reduced from 512 for ~1.5KB savings per buffer
+        .dma_buf_count = 8,
+        .dma_buf_len = 512,
         .use_apll = false,
         .tx_desc_auto_clear = true
     };
-    i2s_pin_config_t pin_config = {
+
+    i2s_pin_config_t pins = {
         .bck_io_num = _bck,
         .ws_io_num = _ws,
         .data_out_num = _dout,
         .data_in_num = I2S_PIN_NO_CHANGE
     };
-    i2s_driver_install(I2S_NUM_0, &i2s_config, 0, nullptr);
-    i2s_set_pin(I2S_NUM_0, &pin_config);
+
+    i2s_driver_install(I2S_NUM_0, &cfg, 0, nullptr);
+    i2s_set_pin(I2S_NUM_0, &pins);
+}
+
+bool AudioPlayer::loadFileToRam(const char* filename) {
+    File f = LittleFS.open(filename, "r");
+    if (!f) return false;
+
+    size_t size = f.size();
+    uint8_t* buf = (uint8_t*)malloc(size);
+    if (!buf) {
+        f.close();
+        return false;
+    }
+
+    f.read(buf, size);
+    f.close();
+
+    _audioData = buf;
+    _audioSize = size;
+    return true;
+}
+
+bool AudioPlayer::playFile(const String& filename) {
+    if (_task) return false;
+
+    _stopRequested = false;
+
+    TaskArgs* args = new TaskArgs();
+    args->self = this;
+    args->filename = strdup(filename.c_str());
+    if (!args->filename) {
+        delete args;
+        return false;
+    }
+
+    if (xTaskCreate(
+            playTask,
+            "AudioPlay",
+            4096,
+            args,
+            1,
+            &_task
+        ) != pdPASS)
+    {
+        free(args->filename);
+        delete args;
+        _task = nullptr;
+        return false;
+    }
+
+    return true;
+}
+
+void AudioPlayer::playTask(void* arg) {
+    TaskArgs* args = static_cast<TaskArgs*>(arg);
+    AudioPlayer* self = args->self;
+    char* filename = args->filename;
+    delete args;
+
+    if (!self->loadFileToRam(filename)) {
+        free(filename);
+        self->_task = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    free(filename);
+
+    self->installI2S();
+    self->startI2S();
+    self->amplifierOn();
+
+    constexpr size_t WAV_HEADER_SIZE = 44;
+
+    size_t offset = WAV_HEADER_SIZE;
+    while (offset < self->_audioSize && !self->_stopRequested) {
+        size_t written = 0;
+        size_t chunk = min<size_t>(2048, self->_audioSize - offset);
+        // apply volume
+        int16_t* samples = (int16_t*)(self->_audioData + offset);
+        size_t sampleCount = chunk / sizeof(int16_t);
+
+        for (size_t i = 0; i < sampleCount; i++) {
+            samples[i] = (int16_t)(samples[i] * self->_volume);
+        }
+
+        i2s_write(
+            I2S_NUM_0,
+            self->_audioData + offset,
+            chunk,
+            &written,
+            portMAX_DELAY
+        );
+
+        offset += written;
+    }
+
+    free(self->_audioData);
+    self->_audioData = nullptr;
+    self->_audioSize = 0;
+
+    self->stopI2S();
+    self->amplifierOff();
+    self->uninstallI2S();
+
+    self->_stopRequested = false;
+    self->_task = nullptr;
+    vTaskDelete(nullptr);
+}
+
+
+static bool hasWavExtension(const String &name) {
+    return name.endsWith(".wav");
+}
+
+bool AudioPlayer::playRandom(const char* directory) {
+    if (_task) return false;
+
+    File dir = LittleFS.open(directory);
+    if (!dir || !dir.isDirectory()) return false;
+
+    std::vector<String> wavFiles;
+    File file = dir.openNextFile();
+    while (file) {
+        if (!file.isDirectory() && hasWavExtension(file.name())) {
+            wavFiles.push_back(String(directory) + "/" + file.name());
+        }
+        file = dir.openNextFile();
+    }
+
+    if (wavFiles.empty()) return false;
+
+    int idx = random(wavFiles.size());
+
+    return playFile(wavFiles[idx]);
+}
+
+void AudioPlayer::stop() {
+    _stopRequested = true;
+}
+
+bool AudioPlayer::isPlaying() const {
+    return _task != nullptr;
+}
+
+void AudioPlayer::installI2S() {
+    if (_i2sInstalled) return;
+
+    i2s_config_t cfg = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
+        .sample_rate = 22050,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = I2S_COMM_FORMAT_I2S_MSB,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 8,
+        .dma_buf_len = 512,
+        .use_apll = false,
+        .tx_desc_auto_clear = true
+    };
+
+    i2s_pin_config_t pins = {
+        .bck_io_num = _bck,
+        .ws_io_num = _ws,
+        .data_out_num = _dout,
+        .data_in_num = I2S_PIN_NO_CHANGE
+    };
+
+    i2s_driver_install(I2S_NUM_0, &cfg, 0, nullptr);
+    i2s_set_pin(I2S_NUM_0, &pins);
+
+    _i2sInstalled = true;
+}
+
+void AudioPlayer::uninstallI2S() {
+    if (!_i2sInstalled) return;
+
+    i2s_stop(I2S_NUM_0);
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    i2s_driver_uninstall(I2S_NUM_0);
+
+    _i2sInstalled = false;
 }
 
 void AudioPlayer::startI2S() {
@@ -92,112 +231,15 @@ void AudioPlayer::stopI2S() {
 }
 
 void AudioPlayer::amplifierOn() {
-    digitalWrite(_ampSdPin, HIGH);  // SD pin HIGH = amplifier ON
+    digitalWrite(_ampSdPin, HIGH);
 }
 
 void AudioPlayer::amplifierOff() {
-    digitalWrite(_ampSdPin, LOW);   // SD pin LOW = amplifier OFF (shutdown)
+    digitalWrite(_ampSdPin, LOW);
 }
 
-bool AudioPlayer::playFile(const String &filename){
-    if (_taskHandle != nullptr) return false; // already playing
-
-    _stopRequested = false;
-
-    PlayTaskParams* params = new PlayTaskParams();
-    params->self = this;
-    // duplicate filename C-string to pass into task without String overhead
-    params->filename = strdup(filename.c_str());
-    if (!params->filename) {
-        delete params;
-        return false;
-    }
-
-    BaseType_t res = xTaskCreate(
-        playTask,
-        "AudioPlay",
-        4096, // back to original for stability
-        params,
-        1,
-        &_taskHandle
-    );
-
-    if (res != pdPASS) {
-        delete params;
-        _taskHandle = nullptr;
-        return false;
-    }
-
-    return true;
-}
-
-static bool hasWavExtension(const String& name) {
-    return name.endsWith(".wav");
-}
-
-bool AudioPlayer::playRandom(const char* directory) {
-    if (_taskHandle != nullptr) return false; // already playing
-
-    File dir = LittleFS.open(directory);
-    if (!dir || !dir.isDirectory()) {
-        return false;
-    }
-
-    // 1. Get count of .wav files
-    int fileCount = 0;
-    File file = dir.openNextFile();
-    while (file) {
-        if (!file.isDirectory() && hasWavExtension(file.name())) {
-            fileCount++;
-        }
-        file = dir.openNextFile();
-    }
-
-    if (fileCount == 0) {
-        return false;
-    }
-
-    // 2. Choose random index
-    int targetIndex = random(fileCount);
-
-    // 3. Find and play the file at that index
-    dir.rewindDirectory();
-    file = dir.openNextFile();
-
-    int index = 0;
-    String selectedFile;
-
-    while (file) {
-        if (!file.isDirectory() && hasWavExtension(file.name())) {
-            if (index == targetIndex) {
-                selectedFile = String(directory) + "/" + file.name();
-                break;
-            }
-            index++;
-        }
-        file = dir.openNextFile();
-    }
-
-    if (selectedFile.isEmpty()) {
-        return false;
-    }
-
-    return playFile(selectedFile);
-}
-
-void AudioPlayer::stop(){
-    if (_taskHandle == nullptr) return;
-    _stopRequested = true;
-    // wait for task to clear handle
-    uint32_t wait = 0;
-    while (_taskHandle != nullptr && wait++ < 500) {
-        vTaskDelay(1);
-    }
-    // ensure I2S and amplifier are off
-    stopI2S();
-    amplifierOff();
-}
-
-bool AudioPlayer::isPlaying(){
-    return _taskHandle != nullptr;
+void AudioPlayer::setVolume(float v) {
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    _volume = v;
 }

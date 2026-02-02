@@ -79,7 +79,7 @@ void handle_play_random() {
         return;
     }
 
-    if (audioPlayer && audioPlayer->playRandom()) {
+    if (audioPlayer && audioPlayer->playRandom("/")) {
         lastRandomMs = now;
         server.send(200, "text/plain", "Random sound playing");
     } else {

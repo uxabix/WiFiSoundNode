@@ -24,7 +24,6 @@ void setup() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     setCpuFrequencyMhz(80);
 
-
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS mount failed");
         return;
@@ -35,7 +34,9 @@ void setup() {
     http_server_init(player);
     Serial.println("HTTP server started");
 
-    if (!LittleFS.exists("/glass1.wav")) {
+    player.setVolume(1.0f); // set initial volume
+
+    if (!LittleFS.exists("/output.wav")) {
         Serial.println("Test file not found in LittleFS. Use 'pio run -t uploadfs' to upload files.");
         return;
     }
@@ -43,7 +44,7 @@ void setup() {
 
 void loop() {
     http_server_handle();
-    // Small delay to prevent watchdog and reduce CPU usage
-    // Do NOT use esp_light_sleep_start() - it blocks the async HTTP server
-    delay(100);
+    if (!player.isPlaying()) {
+        delay(1000); // Sleep when not playing
+    }
 }

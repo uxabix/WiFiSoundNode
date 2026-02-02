@@ -1,28 +1,45 @@
 #pragma once
+
 #include <Arduino.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
+#include <driver/i2s.h>
 
 class AudioPlayer {
 public:
     AudioPlayer(int bck, int ws, int dout, int ampSdPin);
-    // Start playback asynchronously; returns false if already playing or on error
+
     bool playFile(const String &filename);
-    bool playRandom(const char* directory = "/");
-    // Request stop and wait for playback task to end
+    bool playRandom(const char* directory);
     void stop();
-    // Is audio currently playing
-    bool isPlaying();
+    bool isPlaying() const;
+    void setVolume(float v);
+
 
 private:
-    int _bck, _ws, _dout, _ampSdPin;
+    static void playTask(void* arg);
+
+    bool loadFileToRam(const char* filename);
+
     void initI2S();
     void startI2S();
     void stopI2S();
+    void installI2S();
+    void uninstallI2S();
+
+
     void amplifierOn();
     void amplifierOff();
 
-    TaskHandle_t _taskHandle = nullptr;
+    // pins
+    int _bck, _ws, _dout, _ampSdPin;
+
+    // task handle
+    TaskHandle_t _task = nullptr;
     volatile bool _stopRequested = false;
-    static void playTask(void* pvParameters);
+
+    // audio buffer
+    uint8_t* _audioData = nullptr;
+    size_t   _audioSize = 0;
+
+    float _volume = 1.0f; // 0.0 … 1.0
+    bool _i2sInstalled = false;
 };
