@@ -9,3 +9,9 @@
 
 // ===== Device =====
 #define DEVICE_NAME "SoundNode"
+
+// ===== Audio =====
+#define I2S_BCK  5
+#define I2S_WS   4
+#define I2S_DOUT 2
+#define SD       0

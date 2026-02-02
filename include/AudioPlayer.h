@@ -5,7 +5,7 @@
 
 class AudioPlayer {
 public:
-    AudioPlayer(int bck, int ws, int dout);
+    AudioPlayer(int bck, int ws, int dout, int ampSdPin);
     // Start playback asynchronously; returns false if already playing or on error
     bool playFile(const String &filename);
     bool playRandom(const char* directory = "/");
@@ -15,8 +15,12 @@ public:
     bool isPlaying();
 
 private:
-    int _bck, _ws, _dout;
+    int _bck, _ws, _dout, _ampSdPin;
     void initI2S();
+    void startI2S();
+    void stopI2S();
+    void amplifierOn();
+    void amplifierOff();
 
     TaskHandle_t _taskHandle = nullptr;
     volatile bool _stopRequested = false;

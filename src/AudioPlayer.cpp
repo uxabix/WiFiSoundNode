@@ -3,26 +3,34 @@
 #include <LittleFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <cstring>
 
 struct PlayTaskParams {
     AudioPlayer* self;
-    String filename;
+    char* filename; // heap-allocated C-string to avoid String overhead in task
 };
 
 void AudioPlayer::playTask(void* pvParameters) {
     PlayTaskParams* params = static_cast<PlayTaskParams*>(pvParameters);
     AudioPlayer* self = params->self;
-    String filename = params->filename;
+    char* filename = params->filename;
+    // take ownership of filename and free params container
     delete params;
 
     File file = LittleFS.open(filename, "r");
     if (!file) {
         self->_taskHandle = nullptr;
+        free(filename);
+        self->stopI2S();
+        self->amplifierOff();
         vTaskDelete(nullptr);
         return;
     }
 
-    const size_t BUF_SIZE = 512;
+    self->startI2S();
+    self->amplifierOn();
+
+    const size_t BUF_SIZE = 256; // smaller buffer = lower RAM usage
     uint8_t buffer[BUF_SIZE];
 
     while (file.available() && !self->_stopRequested) {
@@ -36,13 +44,19 @@ void AudioPlayer::playTask(void* pvParameters) {
     }
 
     file.close();
+    self->stopI2S();
+    self->amplifierOff();
+    free(filename);
     self->_stopRequested = false;
     self->_taskHandle = nullptr;
     vTaskDelete(nullptr);
 }
 
-AudioPlayer::AudioPlayer(int bck, int ws, int dout) : _bck(bck), _ws(ws), _dout(dout) {
-    initI2S();
+AudioPlayer::AudioPlayer(int bck, int ws, int dout, int ampSdPin) 
+    : _bck(bck), _ws(ws), _dout(dout), _ampSdPin(ampSdPin) {
+    pinMode(_ampSdPin, OUTPUT);
+    amplifierOff();  // keep amplifier off by default to save power
+    initI2S();  // initialize I2S driver once at startup
 }
 
 void AudioPlayer::initI2S(){
@@ -53,8 +67,8 @@ void AudioPlayer::initI2S(){
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
         .communication_format = I2S_COMM_FORMAT_I2S_MSB,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 8,
-        .dma_buf_len = 512,
+        .dma_buf_count = 6, // balanced: reduced from 8 for ~2KB savings
+        .dma_buf_len = 256, // reduced from 512 for ~1.5KB savings per buffer
         .use_apll = false,
         .tx_desc_auto_clear = true
     };
@@ -68,6 +82,23 @@ void AudioPlayer::initI2S(){
     i2s_set_pin(I2S_NUM_0, &pin_config);
 }
 
+void AudioPlayer::startI2S() {
+    i2s_start(I2S_NUM_0);
+}
+
+void AudioPlayer::stopI2S() {
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    i2s_stop(I2S_NUM_0);
+}
+
+void AudioPlayer::amplifierOn() {
+    digitalWrite(_ampSdPin, HIGH);  // SD pin HIGH = amplifier ON
+}
+
+void AudioPlayer::amplifierOff() {
+    digitalWrite(_ampSdPin, LOW);   // SD pin LOW = amplifier OFF (shutdown)
+}
+
 bool AudioPlayer::playFile(const String &filename){
     if (_taskHandle != nullptr) return false; // already playing
 
@@ -75,12 +106,17 @@ bool AudioPlayer::playFile(const String &filename){
 
     PlayTaskParams* params = new PlayTaskParams();
     params->self = this;
-    params->filename = filename;
+    // duplicate filename C-string to pass into task without String overhead
+    params->filename = strdup(filename.c_str());
+    if (!params->filename) {
+        delete params;
+        return false;
+    }
 
     BaseType_t res = xTaskCreate(
         playTask,
         "AudioPlay",
-        4096,
+        4096, // back to original for stability
         params,
         1,
         &_taskHandle
@@ -157,6 +193,9 @@ void AudioPlayer::stop(){
     while (_taskHandle != nullptr && wait++ < 500) {
         vTaskDelay(1);
     }
+    // ensure I2S and amplifier are off
+    stopI2S();
+    amplifierOff();
 }
 
 bool AudioPlayer::isPlaying(){

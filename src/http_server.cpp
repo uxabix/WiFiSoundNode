@@ -1,10 +1,10 @@
 #include <LittleFS.h>
+#include <WebServer.h>
 
 #include "http_server.h"
 
 WebServer server(80);
 static AudioPlayer* audioPlayer = nullptr;
-
 
 void handle_ping() {
     server.send(200, "text/plain", "OK");
@@ -38,6 +38,14 @@ void handle_play() {
         return;
     }
 
+    static unsigned long lastPlayMs = 0;
+    const unsigned long minInterval = 200;
+    unsigned long now = millis();
+    if (now - lastPlayMs < minInterval) {
+        server.send(429, "text/plain", "Too many requests");
+        return;
+    }
+
     String filename = "/" + server.arg("file");
 
     if (!LittleFS.exists(filename)) {
@@ -45,28 +53,38 @@ void handle_play() {
         return;
     }
 
-    audioPlayer->playFile(filename);
-    Serial.print("Play request: ");
-    Serial.println(filename);
+    bool started = audioPlayer && audioPlayer->playFile(filename);
 
+    Serial.print("Play request: ");
+    Serial.print(filename);
+    Serial.print(" -> ");
+    Serial.println(started ? "started" : "rejected");
+
+    if (!started) {
+        server.send(409, "text/plain", "Already playing or failed to start");
+        return;
+    }
+
+    lastPlayMs = now;
     server.send(200, "text/plain", "Playing " + filename);
 }
 
 void handle_play_random() {
+    static unsigned long lastRandomMs = 0;
+    const unsigned long minInterval = 200;
+    unsigned long now = millis();
+
+    if (now - lastRandomMs < minInterval) {
+        server.send(429, "text/plain", "Too many requests");
+        return;
+    }
+
     if (audioPlayer && audioPlayer->playRandom()) {
+        lastRandomMs = now;
         server.send(200, "text/plain", "Random sound playing");
     } else {
         server.send(500, "text/plain", "Failed to play random sound");
     }
-}
-
-void handle_not_found() {
-    String msg = "404 Not Found\nURI: ";
-    msg += server.uri();
-    msg += "\n";
-    server.send(404, "text/plain", msg);
-    Serial.print("Not found: ");
-    Serial.println(server.uri());
 }
 
 void handle_stop() {
@@ -80,8 +98,20 @@ void handle_stop() {
     server.send(200, "text/plain", "Stopped");
 }
 
+void handle_not_found() {
+    String msg = "404 Not Found\nURI: ";
+    msg += server.uri();
+    msg += "\n";
+
+    server.send(404, "text/plain", msg);
+
+    Serial.print("Not found: ");
+    Serial.println(server.uri());
+}
+
 void http_server_init(AudioPlayer& player) {
     audioPlayer = &player;
+
     server.on("/ping", HTTP_GET, handle_ping);
     server.on("/list", HTTP_GET, handle_list);
     server.on("/play", HTTP_GET, handle_play);
@@ -90,7 +120,7 @@ void http_server_init(AudioPlayer& player) {
     server.onNotFound(handle_not_found);
 
     server.begin();
-    Serial.println("HTTP server started");
+    Serial.println("HTTP server started (sync)");
 }
 
 void http_server_handle() {
