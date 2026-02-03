@@ -1,5 +1,6 @@
 #include <LittleFS.h>
 #include <WebServer.h>
+#include <esp_heap_caps.h>
 
 #include "http_server.h"
 
@@ -109,14 +110,44 @@ void handle_not_found() {
     Serial.println(server.uri());
 }
 
+void handle_stream_upload() {
+    HTTPUpload& upload = server.upload();
+
+    if (!audioPlayer) return;
+
+    if (upload.status == UPLOAD_FILE_START) {
+        if (audioPlayer->isPlaying()) {
+            audioPlayer->stop();
+            vTaskDelay(50);
+        }
+        size_t total = upload.totalSize;
+        Serial.printf("Upload start, total=%zu\n", total);
+        audioPlayer->streamUploadStart(total);
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        audioPlayer->streamUploadWrite((const uint8_t*)upload.buf, upload.currentSize);
+    } else if (upload.status == UPLOAD_FILE_END) {
+        Serial.printf("Upload end, received=%zu\n", upload.totalSize);
+        audioPlayer->streamUploadEnd();
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Serial.println("Upload aborted");
+        audioPlayer->streamUploadAbort();
+    }
+}
+
+
 void http_server_init(AudioPlayer& player) {
     audioPlayer = &player;
+
+    const char* headerKeys[] = { "Content-Length" };
+    server.collectHeaders(headerKeys, 1);
 
     server.on("/ping", HTTP_GET, handle_ping);
     server.on("/list", HTTP_GET, handle_list);
     server.on("/play", HTTP_GET, handle_play);
     server.on("/stop", HTTP_GET, handle_stop);
     server.on("/play_random", HTTP_GET, handle_play_random);
+    server.on("/stream", HTTP_POST, handle_stream_upload);
+
     server.onNotFound(handle_not_found);
 
     server.begin();
