@@ -3,6 +3,8 @@
 #include <esp_heap_caps.h>
 
 #include "http_server.h"
+#include "sleep_manager.h"
+#include "battery.h"
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -183,6 +185,41 @@ void handle_stream_upload(
     }
 }
 
+// Handler for /battery endpoint, returns JSON with voltage and percentage
+void handle_battery(AsyncWebServerRequest* request) {
+    float voltage = battery_get_voltage();
+    float percent = battery_get_percentage();
+
+    String response = "{";
+    response += "\"voltage\":" + String(voltage, 2) + ",";
+    response += "\"percent\":" + String(percent, 1);
+    response += "}";
+
+    request->send(200, "application/json", response);
+}
+
+// Handler for /sleep endpoint, returns JSON with sleep info
+void handle_sleep(AsyncWebServerRequest* request) {
+    SleepInfo info = sleep_get_info();
+
+    String json = "{";
+    json += "\"night_now\":" + String(info.night_now ? "true":"false") + ",";
+    json += "\"current\":\"" +
+            String(info.current_hour) + ":" +
+            String(info.current_minute) + "\",";
+    json += "\"sleep_from\":\"" +
+            String(info.sleep_from_hour) + ":" +
+            String(info.sleep_from_minute) + "\",";
+    json += "\"sleep_to\":\"" +
+            String(info.sleep_to_hour) + ":" +
+            String(info.sleep_to_minute) + "\",";
+    json += "\"seconds_to_event\":" + String(info.seconds_to_event);
+    json += "}";
+
+    request->send(200, "application/json", json);
+}
+
+
 // -----------------------------------------------------------------------------
 // Server initialization
 // -----------------------------------------------------------------------------
@@ -195,6 +232,8 @@ void http_server_init(AudioPlayer& player) {
     server.on("/play", HTTP_GET, handle_play);
     server.on("/play_random", HTTP_GET, handle_play_random);
     server.on("/stop", HTTP_GET, handle_stop);
+    server.on("/battery", HTTP_GET, handle_battery);
+    server.on("/sleep", HTTP_GET, handle_sleep);
 
     server.on(
         "/stream",

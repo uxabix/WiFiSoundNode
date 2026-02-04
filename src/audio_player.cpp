@@ -1,4 +1,4 @@
-#include "AudioPlayer.h"
+#include "audio_player.h"
 
 AudioPlayer::AudioPlayer(int bck, int ws, int dout, int ampSdPin)
     : _bck(bck), _ws(ws), _dout(dout), _ampSdPin(ampSdPin) {

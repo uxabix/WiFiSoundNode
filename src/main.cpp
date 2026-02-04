@@ -7,19 +7,11 @@
 #include "config.h"
 #include "wifi_manager.h"
 #include "http_server.h"
-#include "AudioPlayer.h"
+#include "audio_player.h"
+#include "sleep_manager.h"
 #include "battery.h"
 
 AudioPlayer player(I2S_BCK, I2S_WS, I2S_DOUT, AMP_SD_PIN);
-
-// RTC memory to store sunrise/sunset times
-RTC_DATA_ATTR int sunriseHour = SUNRISE_HOUR;
-RTC_DATA_ATTR int sunriseMinute = SUNRISE_MINUTE;
-RTC_DATA_ATTR int sunsetHour  = SUNSET_HOUR;
-RTC_DATA_ATTR int sunsetMinute = SUNSET_MINUTE;
-
-void checkSunTimesAndSleep();
-void goToSleepUntilNextWake();
 
 void setup() {
     Serial.begin(115200);
@@ -66,63 +58,27 @@ void setup() {
     }
 }
 
-void checkSunTimesAndSleep() {
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
-        Serial.println("Failed to obtain time, using RTC memory values");
-        return;
-    }
-
-    int currentHour = timeinfo.tm_hour;
-    int currentMinute = timeinfo.tm_min;
-
-    Serial.printf("Current time: %02d:%02d\n", currentHour, currentMinute);
-    Serial.printf("Sunrise: %02d:%02d, Sunset: %02d:%02d\n",
-                  sunriseHour, sunriseMinute, sunsetHour, sunsetMinute);
-
-    if ((currentHour < sunriseHour) || (currentHour > sunsetHour) ||
-        (currentHour == sunriseHour && currentMinute < sunriseMinute) ||
-        (currentHour == sunsetHour && currentMinute > sunsetMinute)) {
-
-        Serial.println("Entering deep sleep until sunrise...");
-        goToSleepUntilNextWake();
-    }
-}
-
-void goToSleepUntilNextWake() {
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
-        Serial.println("Cannot get time, skipping sleep");
-        return;
-    }
-
-    time_t now = mktime(&timeinfo);
-
-    struct tm nextWake = timeinfo;
-    nextWake.tm_hour = sunriseHour;
-    nextWake.tm_min = sunriseMinute;
-    nextWake.tm_sec = 0;
-
-    time_t wakeTime = mktime(&nextWake);
-    if (wakeTime <= now) wakeTime += 24*3600; // next day
-
-    int secondsToWake = wakeTime - now;
-    Serial.printf("Deep sleep for %d seconds\n", secondsToWake);
-
-    esp_sleep_enable_timer_wakeup((uint64_t)secondsToWake*1000000ULL);
-    esp_deep_sleep_start();
-}
-
 void loop() {
     static unsigned long lastCheck = 0;
+    static unsigned long lastBatteryCheck = 0;
     unsigned long now = millis();
 
-    if (now - lastCheck > 30*60*1000) { // every 30 minutes
+    if (now - lastCheck > 30*60*1000) { // Check sleep condition every 30 minutes
         lastCheck = now;
-        checkSunTimesAndSleep();
+
+        if (sleep_should_sleep_now()) {
+            Serial.println("Night detected → going to sleep");
+            sleep_go_until_wakeup();
+        }
+    }
+
+    if (now - lastBatteryCheck > 60*60*1000) { // Check battery every hour
+        lastBatteryCheck = now;
+        battery_check_critical(); // will sleep if battery is critical
     }
 
     if (!player.isPlaying() && !isStreaming) {
-        delay(2000);
+        delay(10 * 1000); // Delay to avoid busy loop when idle. Should save power while waiting for requests.
     }
 }
+
