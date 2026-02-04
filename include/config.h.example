@@ -10,8 +10,35 @@
 // ===== Device =====
 #define DEVICE_NAME "SoundNode"
 
+// -----------------------------
+// Battery / ADC configuration
+// -----------------------------
+
+#define BTR_ADC_PIN      3       // ADC pin for battery measurement
+
+#define BATT_MAX_VOLTAGE 8.4f    // Full charge voltage for 2S Li-ion (4.2V * 2)
+#define BATT_MIN_VOLTAGE 5.6f    // Minimum safe voltage for 2S Li-ion (~2.8V * 2)
+#define BATT_CRITICAL_VOLTAGE  6.0f // go to deep sleep if below
+
+// Voltage divider (Ohms)
+#define BATT_DIV_R1      12000.0f // R1 from positive terminal to ADC
+#define BATT_DIV_R2      10000.0f // R2 from ADC to GND
+#define BATT_CAL_FACTOR  0.911f   // Coefficient to calibrate voltage readings (adjust based on measurements)
+
+// ----------------------------
+// Sleep config
+// ----------------------------
+#define BATTERY_WAKEUP_INTERVAL 120 // seconds
+
+// ===== Time =====
+#define SUNRISE_HOUR    06
+#define SUNRISE_MINUTE  00
+#define SUNSET_HOUR     20
+#define SUNSET_MINUTE   00
+#define TIMEZONE "CET-1CEST,M3.5.0/2,M10.5.0/3"
+
 // ===== Audio =====
-#define I2S_BCK  5
-#define I2S_WS   4
-#define I2S_DOUT 2
-#define SD       0
+#define I2S_BCK    5
+#define I2S_WS     4
+#define I2S_DOUT   2
+#define AMP_SD_PIN 0  // DC-DC (or MAX98357A) shutdown pin (HIGH=on, LOW=off)
