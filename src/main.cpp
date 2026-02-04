@@ -43,8 +43,7 @@ void setup() {
 }
 
 void loop() {
-    http_server_handle();
-    if (!player.isPlaying()) {
-        delay(1000); // Sleep when not playing
+    if (!player.isPlaying() && !isStreaming) {
+        delay(2000);
     }
 }

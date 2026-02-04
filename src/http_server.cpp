@@ -1,25 +1,55 @@
 #include <LittleFS.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <esp_heap_caps.h>
 
 #include "http_server.h"
 
-WebServer server(80);
-static AudioPlayer* audioPlayer = nullptr;
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
 
-void handle_ping() {
-    server.send(200, "text/plain", "OK");
+static constexpr uint16_t HTTP_PORT = 80;
+static constexpr size_t WAV_HEADER_SIZE = 44;
+
+// -----------------------------------------------------------------------------
+// Globals
+// -----------------------------------------------------------------------------
+
+AsyncWebServer server(HTTP_PORT);
+static AudioPlayer* audioPlayer = nullptr;
+bool isStreaming = false;
+
+// -----------------------------------------------------------------------------
+// Simple handlers
+// -----------------------------------------------------------------------------
+
+void handle_ping(AsyncWebServerRequest* request) {
+    request->send(200, "text/plain", "OK");
 }
 
-void handle_list() {
-    String response = "[";
-    bool first = true;
+void handle_not_found(AsyncWebServerRequest* request) {
+    String msg = "404 Not Found\nURI: ";
+    msg += request->url();
 
+    Serial.print("Not found: ");
+    Serial.println(request->url());
+
+    request->send(404, "text/plain", msg);
+}
+
+// -----------------------------------------------------------------------------
+// File system handlers
+// -----------------------------------------------------------------------------
+
+void handle_list(AsyncWebServerRequest* request) {
     File root = LittleFS.open("/");
     if (!root || !root.isDirectory()) {
-        server.send(500, "text/plain", "LittleFS error");
+        request->send(500, "text/plain", "LittleFS error");
         return;
     }
+
+    String response = "[";
+    bool first = true;
 
     File file = root.openNextFile();
     while (file) {
@@ -30,130 +60,164 @@ void handle_list() {
     }
 
     response += "]";
-    server.send(200, "application/json", response);
+    request->send(200, "application/json", response);
 }
 
-void handle_play() {
-    if (!server.hasArg("file")) {
-        server.send(400, "text/plain", "Missing file parameter");
+// -----------------------------------------------------------------------------
+// Playback handlers
+// -----------------------------------------------------------------------------
+
+void handle_play(AsyncWebServerRequest* request) {
+    if (!request->hasParam("file")) {
+        request->send(400, "text/plain", "Missing file parameter");
         return;
     }
 
-    static unsigned long lastPlayMs = 0;
-    const unsigned long minInterval = 200;
-    unsigned long now = millis();
-    if (now - lastPlayMs < minInterval) {
-        server.send(429, "text/plain", "Too many requests");
-        return;
-    }
-
-    String filename = "/" + server.arg("file");
+    String filename = "/" + request->getParam("file")->value();
 
     if (!LittleFS.exists(filename)) {
-        server.send(404, "text/plain", "File not found");
+        request->send(404, "text/plain", "File not found");
         return;
     }
 
     bool started = audioPlayer && audioPlayer->playFile(filename);
 
-    Serial.print("Play request: ");
-    Serial.print(filename);
-    Serial.print(" -> ");
-    Serial.println(started ? "started" : "rejected");
+    Serial.printf(
+        "Play request: %s -> %s\n",
+        filename.c_str(),
+        started ? "started" : "rejected"
+    );
 
     if (!started) {
-        server.send(409, "text/plain", "Already playing or failed to start");
+        request->send(409, "text/plain", "Already playing or failed to start");
         return;
     }
 
-    lastPlayMs = now;
-    server.send(200, "text/plain", "Playing " + filename);
+    request->send(200, "text/plain", "Playing " + filename);
 }
 
-void handle_play_random() {
-    static unsigned long lastRandomMs = 0;
-    const unsigned long minInterval = 200;
-    unsigned long now = millis();
-
-    if (now - lastRandomMs < minInterval) {
-        server.send(429, "text/plain", "Too many requests");
-        return;
-    }
-
+void handle_play_random(AsyncWebServerRequest* request) {
     if (audioPlayer && audioPlayer->playRandom("/")) {
-        lastRandomMs = now;
-        server.send(200, "text/plain", "Random sound playing");
+        request->send(200, "text/plain", "Random sound playing");
     } else {
-        server.send(500, "text/plain", "Failed to play random sound");
+        request->send(500, "text/plain", "Failed to play random sound");
     }
 }
 
-void handle_stop() {
+void handle_stop(AsyncWebServerRequest* request) {
     if (!audioPlayer) {
-        server.send(500, "text/plain", "AudioPlayer not initialized");
+        request->send(500, "text/plain", "AudioPlayer not initialized");
         return;
     }
 
     audioPlayer->stop();
     Serial.println("Stop requested");
-    server.send(200, "text/plain", "Stopped");
+
+    request->send(200, "text/plain", "Stopped");
 }
 
-void handle_not_found() {
-    String msg = "404 Not Found\nURI: ";
-    msg += server.uri();
-    msg += "\n";
+// -----------------------------------------------------------------------------
+// Streaming upload handler
+// -----------------------------------------------------------------------------
 
-    server.send(404, "text/plain", msg);
+void handle_stream_upload(
+    AsyncWebServerRequest* request,
+    uint8_t* data,
+    size_t len,
+    size_t index,
+    size_t total
+) {
+    static bool headerSkipped = false;
+    static size_t headerBytes = 0;
 
-    Serial.print("Not found: ");
-    Serial.println(server.uri());
-}
+    // Upload start
+    if (index == 0) {
+        isStreaming = true;
+        headerSkipped = false;
+        headerBytes = 0;
 
-void handle_stream_upload() {
-    HTTPUpload& upload = server.upload();
+        Serial.printf("Stream upload start, total=%zu\n", total);
 
-    if (!audioPlayer) return;
-
-    if (upload.status == UPLOAD_FILE_START) {
-        if (audioPlayer->isPlaying()) {
+        if (audioPlayer && audioPlayer->isPlaying()) {
             audioPlayer->stop();
-            vTaskDelay(50);
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
-        size_t total = upload.totalSize;
-        Serial.printf("Upload start, total=%zu\n", total);
-        audioPlayer->streamUploadStart(total);
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-        audioPlayer->streamUploadWrite((const uint8_t*)upload.buf, upload.currentSize);
-    } else if (upload.status == UPLOAD_FILE_END) {
-        Serial.printf("Upload end, received=%zu\n", upload.totalSize);
+
+        if (audioPlayer) {
+            audioPlayer->streamUploadStart(total);
+        }
+    }
+
+    if (!audioPlayer) {
+        return;
+    }
+
+    // Skip WAV header (first 44 bytes)
+    size_t offset = 0;
+    if (!headerSkipped) {
+        size_t remaining = WAV_HEADER_SIZE - headerBytes;
+
+        if (len <= remaining) {
+            headerBytes += len;
+            return;
+        }
+
+        offset = remaining;
+        headerBytes = WAV_HEADER_SIZE;
+        headerSkipped = true;
+
+        Serial.println("WAV header skipped");
+    }
+
+    // Send raw PCM data directly to I2S
+    if (len > offset) {
+        audioPlayer->streamUploadWrite(data + offset, len - offset);
+    }
+
+    // Upload end
+    if (index + len == total) {
+        Serial.println("Stream upload complete");
+
         audioPlayer->streamUploadEnd();
-    } else if (upload.status == UPLOAD_FILE_ABORTED) {
-        Serial.println("Upload aborted");
-        audioPlayer->streamUploadAbort();
+        isStreaming = false;
     }
 }
 
+// -----------------------------------------------------------------------------
+// Server initialization
+// -----------------------------------------------------------------------------
 
 void http_server_init(AudioPlayer& player) {
     audioPlayer = &player;
 
-    const char* headerKeys[] = { "Content-Length" };
-    server.collectHeaders(headerKeys, 1);
-
     server.on("/ping", HTTP_GET, handle_ping);
     server.on("/list", HTTP_GET, handle_list);
     server.on("/play", HTTP_GET, handle_play);
-    server.on("/stop", HTTP_GET, handle_stop);
     server.on("/play_random", HTTP_GET, handle_play_random);
-    server.on("/stream", HTTP_POST, handle_stream_upload);
+    server.on("/stop", HTTP_GET, handle_stop);
+
+    server.on(
+        "/stream",
+        HTTP_POST,
+        [](AsyncWebServerRequest* request) {
+            isStreaming = false;
+            request->send(200, "text/plain", "OK");
+        },
+        nullptr,
+        handle_stream_upload
+    );
 
     server.onNotFound(handle_not_found);
-
     server.begin();
-    Serial.println("HTTP server started (sync)");
+
+    Serial.println("HTTP server started (async)");
 }
 
+// -----------------------------------------------------------------------------
+// Compatibility stub
+// -----------------------------------------------------------------------------
+
 void http_server_handle() {
-    server.handleClient();
+    // AsyncWebServer does not require handleClient()
+    // This function is kept for compatibility
 }

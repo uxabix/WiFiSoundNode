@@ -1,9 +1,10 @@
 #pragma once
 
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include "AudioPlayer.h"
 
-extern WebServer server;
+extern AsyncWebServer server;
+extern bool isStreaming;
 
 void http_server_init(AudioPlayer& player);
 void http_server_handle();
