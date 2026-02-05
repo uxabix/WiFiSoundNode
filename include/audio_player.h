@@ -25,6 +25,7 @@ public:
     void streamUploadEnd();
     void streamUploadAbort();
     void streamDirect(WiFiClient* client, size_t contentLength);
+    void uninstallI2S();
 
 private:
     static void playTask(void* arg);
@@ -35,7 +36,6 @@ private:
     bool loadFileToRam(const char* filename);
 
     void installI2S();
-    void uninstallI2S();
     void startI2S();
     void stopI2S();
 

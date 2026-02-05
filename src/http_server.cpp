@@ -112,7 +112,7 @@ void handle_stop(AsyncWebServerRequest* request) {
         return;
     }
 
-    audioPlayer->stop();
+    audioPlayer->uninstallI2S();
     Serial.println("Stop requested");
 
     request->send(200, "text/plain", "Stopped");
