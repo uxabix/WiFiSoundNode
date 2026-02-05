@@ -4,6 +4,19 @@
 #define WIFI_SSID     "YOUR_WIFI_NAME"
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
+// Enable this to use a static IP
+#define USE_STATIC_IP
+
+#ifdef USE_STATIC_IP
+  #include <IPAddress.h>
+  // Set a static IP address
+  #define LOCAL_IP  IPAddress(192, 168, 1, 61)
+  #define GATEWAY   IPAddress(192, 168, 1, 1)
+  #define SUBNET    IPAddress(255, 255, 255, 0)
+  #define DNS1      IPAddress(8, 8, 8, 8)
+  #define DNS2      IPAddress(8, 8, 4, 4)
+#endif
+
 // ===== HTTP =====
 #define HTTP_PORT 80
 
