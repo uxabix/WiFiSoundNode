@@ -6,3 +6,15 @@
 .vscode/
 
 include/config.h
+
+# KiCad - Temporary files and locks
+*.lck
+*.kicad_prl
+fp-info-cache
+
+include/config.h
+# KiCad - Backups and autosaves
+*.bak
+*.kicad_pcb-bak
+*.kicad_sch-bak
+_autosave-*

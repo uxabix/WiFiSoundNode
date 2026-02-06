@@ -88,14 +88,14 @@ void AudioPlayer::stopI2S() {
 void AudioPlayer::amplifierOn() {
     gpio_hold_dis((gpio_num_t)_ampSdPin);
     gpio_set_direction((gpio_num_t)_ampSdPin, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)_ampSdPin, 1);
+    gpio_set_level((gpio_num_t)_ampSdPin, 0);
     Serial.printf("Amplifier enabled (pin %d)\n", _ampSdPin);
 }
 
 void AudioPlayer::amplifierOff() {
     gpio_hold_dis((gpio_num_t)_ampSdPin);
     gpio_set_direction((gpio_num_t)_ampSdPin, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)_ampSdPin, 0);
+    gpio_set_level((gpio_num_t)_ampSdPin, 1);
     Serial.printf("Amplifier disabled (pin %d)\n", _ampSdPin);
 }
 
