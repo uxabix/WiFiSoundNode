@@ -14,18 +14,23 @@
 AudioPlayer player(I2S_BCK, I2S_WS, I2S_DOUT, AMP_SD_PIN, AMP_SD_ON_STATE);
 
 void setup() {
-    Serial.begin(115200);
+    #ifdef DEBUG_BUILD
+        Serial.begin(115200);
+    #endif
+
     delay(1000);
     randomSeed(micros());
 
     Serial.println("\n=== Sound Node starting ===");
 
+    delay(500); 
     battery_init();
 
     wifi_init();
+    WiFi.setSleep(true);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     esp_wifi_set_max_tx_power(38); // ≈ 9.5 dBm
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     setCpuFrequencyMhz(80);
 
     if (!LittleFS.begin(true)) {
