@@ -1,5 +1,35 @@
 # WiFiSoundNode
 
+## Project Purpose
+
+WiFiSoundNode was created primarily as a companion device for the
+[BirdIdentifier](https://github.com/uxabix/BirdIndentifier?tab=readme-ov-file) project,
+where it is used as a low-power network audio output node for playing bird
+sounds and audio notifications.
+
+At the same time, WiFiSoundNode is deliberately designed as a **fully
+standalone device**. It does not depend on BirdIdentifier or any other specific
+backend and can be used independently as a generic Wi-Fi audio speaker.
+
+The device connects only via Wi-Fi and exposes a simple HTTP API, allowing it
+to be easily integrated into **any other project** without modifying the
+firmware. Audio playback can be triggered remotely, either by playing files
+stored on the device or by streaming audio data directly from a client.
+
+Conceptually, WiFiSoundNode acts as a **Wi-Fi speaker**:
+- it can play preloaded audio files,
+- it can receive and play audio streams over the network,
+- and it can be controlled entirely over HTTP.
+
+Special attention was paid to **power efficiency**. The firmware is optimized
+for battery-powered operation, achieving:
+- approximately **0.1 W power consumption while idle**, and
+- nearly **0 W consumption in Deep Sleep mode**.
+
+This makes WiFiSoundNode suitable not only for BirdIdentifier, but also for
+portable, autonomous, and energy-efficient audio applications.
+
+
 **WiFiSoundNode** is an ESP32-based network audio player designed for efficiency and remote control. It plays `.wav` files stored on the internal filesystem (LittleFS) or streams raw audio data over WiFi. The project includes advanced power management features like battery monitoring and a scheduled "Night Mode" deep sleep.
 
 ## Features
@@ -21,47 +51,9 @@
 
 ## Configuration
 
-The application relies on a `src/config.h` file (not included in the repo, you must create it) to define pinouts and settings.
+The application relies on a `include/config.h` file (not included in the repo, you must copy it from [config.h.example](include\config.h.example)) to define pinouts and settings.
 
-### Example `src/config.h`
 
-```cpp
-#pragma once
-
-// WiFi Settings
-#define WIFI_SSID "YourSSID"
-#define WIFI_PASSWORD "YourPassword"
-
-// I2S Pinout (MAX98357A)
-#define I2S_BCK 26
-#define I2S_WS 25
-#define I2S_DOUT 22
-#define AMP_SD_PIN 21  // Amplifier Shutdown/Enable pin
-
-// Battery Monitoring
-#define BTR_ADC_PIN 34
-#define BATT_DIV_R1 100000.0 // Resistor 1 (Ohms)
-#define BATT_DIV_R2 100000.0 // Resistor 2 (Ohms)
-#define BATT_CAL_FACTOR 1.0  // Calibration multiplier
-#define BATT_MIN_VOLTAGE 3.3
-#define BATT_MAX_VOLTAGE 4.2
-#define BATT_CRITICAL_VOLTAGE 3.2
-#define BATTERY_WAKEUP_INTERVAL 3600 // Seconds to sleep if battery critical
-
-// Sleep Schedule
-#define SUNRISE_HOUR 7
-#define SUNRISE_MINUTE 0
-#define SUNSET_HOUR 22
-#define SUNSET_MINUTE 0
-#define TIMEZONE "CET-1CEST,M3.5.0,M10.5.0/3" // POSIX Timezone string
-
-// Network (Static IP definitions exist in code, but DHCP is default)
-#define LOCAL_IP 192,168,1,200
-#define GATEWAY 192,168,1,1
-#define SUBNET 255,255,255,0
-#define DNS1 8,8,8,8
-#define DNS2 8,8,4,4
-```
 
 ## Installation
 
