@@ -35,9 +35,16 @@ private:
     void installI2S();
     void startI2S();
     void stopI2S();
+    void resetPlaybackState(bool freeAudio);
+    void stopCurrentPlayback();
+    void stopAudioOutput();
+    void startAudioOutput();
 
+    void setAmplifier(bool enabled);
     void amplifierOn();
     void amplifierOff();
+
+    void finishStream();
 
     int _bck, _ws, _dout, _ampSdPin;
     TaskHandle_t _task = nullptr;

@@ -58,18 +58,58 @@ void AudioPlayer::stopI2S() {
     }
 }
 
-void AudioPlayer::amplifierOn() {
+void AudioPlayer::setAmplifier(bool enabled) {
     gpio_hold_dis((gpio_num_t)_ampSdPin);
     gpio_set_direction((gpio_num_t)_ampSdPin, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)_ampSdPin, _OnState ? 1 : 0);
-    Serial.printf("Amplifier enabled (pin %d)\n", _ampSdPin);
+    gpio_set_level(
+        (gpio_num_t)_ampSdPin,
+        enabled ? (_OnState ? 1 : 0) : (_OnState ? 0 : 1)
+    );
+    Serial.printf("Amplifier %s (pin %d)\n",
+                  enabled ? "enabled" : "disabled",
+                  _ampSdPin);
 }
 
-void AudioPlayer::amplifierOff() {
-    gpio_hold_dis((gpio_num_t)_ampSdPin);
-    gpio_set_direction((gpio_num_t)_ampSdPin, GPIO_MODE_OUTPUT);
-    gpio_set_level((gpio_num_t)_ampSdPin, _OnState ? 0 : 1);
-    Serial.printf("Amplifier disabled (pin %d)\n", _ampSdPin);
+void AudioPlayer::amplifierOn()  { setAmplifier(true); }
+void AudioPlayer::amplifierOff() { setAmplifier(false); }
+
+void AudioPlayer::startAudioOutput() {
+    installI2S();
+    startI2S();
+    vTaskDelay(pdMS_TO_TICKS(20));
+    amplifierOn();
+}
+
+void AudioPlayer::stopAudioOutput() {
+    amplifierOff();
+    stopI2S();
+    uninstallI2S();
+}
+
+void AudioPlayer::resetPlaybackState(bool freeAudio) {
+    stopAudioOutput();
+
+    _isStreaming = false;
+    stopRequested = false;
+
+    if (freeAudio && _audioData && _shouldFreeAudioData) {
+        heap_caps_free(_audioData);
+        _audioData = nullptr;
+        _audioSize = 0;
+        _shouldFreeAudioData = false;
+    }
+}
+
+void AudioPlayer::stopCurrentPlayback() {
+    stopRequested = true;
+
+    if (_isStreaming) {
+        stopStreaming();
+    }
+
+    while (_task) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 bool AudioPlayer::loadFileToRam(const char* filename) {
@@ -102,20 +142,9 @@ bool AudioPlayer::loadFileToRam(const char* filename) {
 
 bool AudioPlayer::playFile(const String &filename) {
     if (_task || _isStreaming) {
-        stopRequested = true;
-        stopStreaming();
-        while (_task) { vTaskDelay(pdMS_TO_TICKS(10)); }
+        stopCurrentPlayback();
     }
-    stopI2S();
-    uninstallI2S();
-    amplifierOff();
-    _isStreaming = false;
-    stopRequested = false;
-    if (_shouldFreeAudioData && _audioData) {
-        heap_caps_free(_audioData);
-        _audioData = nullptr;
-        _shouldFreeAudioData = false;
-    }
+    resetPlaybackState(true);
 
     stopRequested = false;
 
@@ -154,10 +183,7 @@ void AudioPlayer::playTask(void* arg) {
     Serial.printf("File loaded: %s, size=%zu bytes\n", filename, self->_audioSize);
     free(filename);
 
-    self->installI2S();
-    self->startI2S();
-    vTaskDelay(50);
-    self->amplifierOn();
+    self->startAudioOutput();
     Serial.printf("Amplifier ON, I2S started\n");
 
     constexpr size_t WAV_HEADER_SIZE = 44;
@@ -189,13 +215,7 @@ void AudioPlayer::playTask(void* arg) {
     }
     self->_audioSize = 0;
     self->_shouldFreeAudioData = false;
-    self->_isStreaming = false;
-
-    self->stopI2S();
-    self->amplifierOff();
-    self->uninstallI2S();
-
-    self->stopRequested = false;
+    self->resetPlaybackState(false);
     self->_task = nullptr;
     vTaskDelete(nullptr);
 }
@@ -215,23 +235,10 @@ void AudioPlayer::stopStreaming() {
 
     Serial.println("Stopping streaming...");
     stopRequested = true;          
-    vTaskDelay(pdMS_TO_TICKS(50)); 
-    stopI2S();                     
+    vTaskDelay(pdMS_TO_TICKS(50));                     
     i2s_zero_dma_buffer(I2S_NUM_0);
-    uninstallI2S();                
-    amplifierOff();                
-
-    _isStreaming = false;
-    stopRequested = false;
-
-    if (_audioData && _shouldFreeAudioData) {
-        heap_caps_free(_audioData);
-        _audioData = nullptr;
-        _audioSize = 0;
-        _shouldFreeAudioData = false;
-    }
+    resetPlaybackState(true);
 }
-
 
 bool AudioPlayer::isPlaying() const { 
     return _task != nullptr; 
@@ -247,20 +254,9 @@ static bool hasWavExtension(const String &name) {
 
 bool AudioPlayer::playRandom(const char* directory) {
     if (_task || _isStreaming) {
-        stopRequested = true;
-        stopStreaming();
-        while (_task) { vTaskDelay(pdMS_TO_TICKS(10)); }
+        stopCurrentPlayback();
     }
-    stopI2S();
-    uninstallI2S();
-    amplifierOff();
-    _isStreaming = false;
-    stopRequested = false;
-    if (_shouldFreeAudioData && _audioData) {
-        heap_caps_free(_audioData);
-        _audioData = nullptr;
-        _shouldFreeAudioData = false;
-    }
+    resetPlaybackState(true);
 
     File dir = LittleFS.open(directory);
     if (!dir || !dir.isDirectory()) return false;
@@ -287,10 +283,7 @@ void AudioPlayer::streamUploadStart(size_t totalSize) {
         stopRequested = true;
         while (_isStreaming) vTaskDelay(5 / portTICK_PERIOD_MS);
     }
-    installI2S();
-    startI2S();
-    vTaskDelay(20);
-    amplifierOn();
+    startAudioOutput();
     _isStreaming = true; 
     stopRequested = false;
     Serial.printf("Upload stream start: %zu bytes\n", totalSize);
@@ -323,37 +316,20 @@ void AudioPlayer::streamUploadWrite(const uint8_t* buf, size_t len) {
     }
 }
 
+void AudioPlayer::finishStream() {
+    stopAudioOutput();
+    _uploadHeaderSkipped = false;
+    _uploadHeaderBytes = 0;
+    resetPlaybackState(true);
+}
+
 void AudioPlayer::streamUploadEnd() {
     if (!_isStreaming) return;
     Serial.println("Upload stream end");
-    amplifierOff();
-    stopI2S();
-    uninstallI2S();
-    _uploadHeaderSkipped = false;
-    _uploadHeaderBytes = 0;
-    stopRequested = false;
-    _isStreaming = false; 
-    if (_audioData && _shouldFreeAudioData) {
-        heap_caps_free(_audioData);
-        _audioData = nullptr;
-        _audioSize = 0;
-        _shouldFreeAudioData = false;
-    }
+    finishStream();
 }
 
 void AudioPlayer::streamUploadAbort() {
     Serial.println("Upload stream aborted");
-    amplifierOff();
-    stopI2S();
-    uninstallI2S();
-    _uploadHeaderSkipped = false;
-    _uploadHeaderBytes = 0;
-    stopRequested = false;
-    _isStreaming = false; 
-    if (_audioData && _shouldFreeAudioData) {
-        heap_caps_free(_audioData);
-        _audioData = nullptr;
-        _audioSize = 0;
-        _shouldFreeAudioData = false;
-    }
+    finishStream();
 }
