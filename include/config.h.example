@@ -4,13 +4,18 @@
 #define WIFI_SSID     "YOUR_WIFI_NAME"
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
+// WiFi
+#define WIFI_CONNECT_TIMEOUT_MS  15 * 1000  // 15 seconds
+#define WIFI_RECHECK_INTERVAL_MS 5 * 60 * 1000  // Check WiFi connection every 5 minutes
+#define WIFI_LOST_REBOOT_DELAY_MS 5 * 60 * 1000 // Reboot if WiFi is lost for more than 5 minutes
+
 // Enable this to use a static IP
 #define USE_STATIC_IP
 
 #ifdef USE_STATIC_IP
   #include <IPAddress.h>
   // Set a static IP address
-  #define LOCAL_IP  IPAddress(192, 168, 1, 61)
+  #define LOCAL_IP  IPAddress(192, 168, 1, 63)
   #define GATEWAY   IPAddress(192, 168, 1, 1)
   #define SUBNET    IPAddress(255, 255, 255, 0)
   #define DNS1      IPAddress(8, 8, 8, 8)
@@ -34,19 +39,23 @@
 #define BATT_CRITICAL_VOLTAGE  6.0f // go to deep sleep if below
 
 // Voltage divider (Ohms)
-#define BATT_DIV_R1      12000.0f // R1 from positive terminal to ADC
-#define BATT_DIV_R2      10000.0f // R2 from ADC to GND
-#define BATT_CAL_FACTOR  0.911f   // Coefficient to calibrate voltage readings (adjust based on measurements)
+#define BATT_DIV_R1      361000.0f // R1 from positive terminal to ADC
+#define BATT_DIV_R2      268000.0f // R2 from ADC to GND
+
+#define BATT_CAL_FACTOR  0.961   // Coefficient to calibrate voltage readings (adjust based on measurements)
+
+#define BATTERY_CHECK_INTERVAL_MS 60*60*1000 // Check battery every hour (3600000 ms)
 
 // ----------------------------
 // Sleep config
 // ----------------------------
-#define BATTERY_WAKEUP_INTERVAL 120 // seconds
+#define NIGHT_CHECK_INTERVAL_MS 30*60*1000 // Check sleep condition every 30 minutes (1800000 ms)
+#define BATTERY_WAKEUP_INTERVAL 600 // seconds
 
 // ===== Time =====
-#define SUNRISE_HOUR    06
-#define SUNRISE_MINUTE  00
-#define SUNSET_HOUR     20
+#define SUNRISE_HOUR    04
+#define SUNRISE_MINUTE  20
+#define SUNSET_HOUR     18
 #define SUNSET_MINUTE   00
 #define TIMEZONE "CET-1CEST,M3.5.0/2,M10.5.0/3"
 
@@ -55,3 +64,5 @@
 #define I2S_WS     4
 #define I2S_DOUT   2
 #define AMP_SD_PIN 0  // DC-DC (or MAX98357A) shutdown pin (HIGH=on, LOW=off)
+
+#define AMP_SD_ON_STATE 1 // 1 - open when HIGH, 0 - open when LOW

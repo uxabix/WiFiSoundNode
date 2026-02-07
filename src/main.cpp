@@ -11,7 +11,7 @@
 #include "sleep_manager.h"
 #include "battery.h"
 
-AudioPlayer player(I2S_BCK, I2S_WS, I2S_DOUT, AMP_SD_PIN);
+AudioPlayer player(I2S_BCK, I2S_WS, I2S_DOUT, AMP_SD_PIN, AMP_SD_ON_STATE);
 
 void setup() {
     Serial.begin(115200);
@@ -61,9 +61,11 @@ void setup() {
 void loop() {
     static unsigned long lastCheck = 0;
     static unsigned long lastBatteryCheck = 0;
+    static unsigned long lastWifiCheck = 0;
+    static unsigned long wifiLostSince = 0;
     unsigned long now = millis();
 
-    if (now - lastCheck > 30*60*1000) { // Check sleep condition every 30 minutes
+    if (now - lastCheck > NIGHT_CHECK_INTERVAL_MS) { // Check sleep condition every 30 minutes
         lastCheck = now;
 
         if (sleep_should_sleep_now()) {
@@ -72,9 +74,31 @@ void loop() {
         }
     }
 
-    if (now - lastBatteryCheck > 60*60*1000) { // Check battery every hour
+    if (now - lastBatteryCheck > BATTERY_CHECK_INTERVAL_MS) { // Check battery every hour
         lastBatteryCheck = now;
         battery_check_critical(); // will sleep if battery is critical
+    }
+
+    // WiFi watchdog
+    if (now - lastWifiCheck > WIFI_RECHECK_INTERVAL_MS) {
+        lastWifiCheck = now;
+
+        if (WiFi.status() != WL_CONNECTED) {
+            if (wifiLostSince == 0) {
+                wifiLostSince = now;
+                Serial.println("WiFi lost");
+            }
+
+            // If wifi is lost it'll probably come back after some time,
+            // so we wait for a while before rebooting to save some power.
+            if (now - wifiLostSince > WIFI_LOST_REBOOT_DELAY_MS) {
+                Serial.println("WiFi lost too long → reboot");
+                delay(100);
+                ESP.restart();
+            }
+        } else {
+            wifiLostSince = 0;
+        }
     }
 
     if (!player.isPlaying() && !isStreaming) {

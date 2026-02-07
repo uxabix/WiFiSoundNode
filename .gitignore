@@ -14,6 +14,7 @@ fp-info-cache
 
 include/config.h
 # KiCad - Backups and autosaves
+.SoundNode-backups/
 *.bak
 *.kicad_pcb-bak
 *.kicad_sch-bak

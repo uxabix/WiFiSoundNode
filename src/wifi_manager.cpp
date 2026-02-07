@@ -13,9 +13,15 @@ void wifi_init() {
 
     Serial.print("Connecting to WiFi");
 
+    unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
+            Serial.println("\nWiFi connect timeout → restarting");
+            delay(100);
+            ESP.restart();
+        }
     }
 
     Serial.println();
