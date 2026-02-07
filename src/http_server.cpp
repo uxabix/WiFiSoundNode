@@ -112,7 +112,7 @@ void handle_stop(AsyncWebServerRequest* request) {
         return;
     }
 
-    audioPlayer->uninstallI2S();
+    audioPlayer->stop();
     Serial.println("Stop requested");
 
     request->send(200, "text/plain", "Stopped");
@@ -173,6 +173,10 @@ void handle_stream_upload(
 
     // Send raw PCM data directly to I2S
     if (len > offset) {
+        if (audioPlayer->stopRequested) {
+            Serial.println("Stop detected during stream upload");
+            return;
+        }
         audioPlayer->streamUploadWrite(data + offset, len - offset);
     }
 
