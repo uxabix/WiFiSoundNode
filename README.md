@@ -47,7 +47,7 @@ portable, autonomous, and energy-efficient audio applications.
 *   **ESP32** Development Board.
 *   **I2S Amplifier Module** (e.g., MAX98357A).
 *   **Speaker**.
-*   **Battery** (LiPo/Li-ion) with a voltage divider connected to an ADC pin (optional).
+*   **Battery** (any type) with a voltage divider connected to an ADC pin (optional).
 
 ## Configuration
 
@@ -215,6 +215,70 @@ You can disable calibration by using:
 
 This is acceptable for non-critical or experimental setups, but not recommended for battery-powered or unattended operation.
 
+## Power consumption
+
+The device was designed with a strong focus on minimizing power consumption. To achieve this, the Wi-Fi transmitter power and radio activity are reduced by default. If this causes connectivity issues, the settings can be adjusted in `main.cpp` inside `void setup()`:
+```cpp
+WiFi.setSleep(true);
+WiFi.setTxPower(WIFI_POWER_8_5dBm);
+esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+esp_wifi_set_max_tx_power(38); // ≈ 9.5 dBm
+```
+
+The MCU clock frequency can also be increased in the same location, which will improve performance but increase power usage:
+```cpp
+setCpuFrequencyMhz(80);
+```
+
+Lower frequencies are not recommended, as the web server becomes unstable or non-functional below this value.
+
+To further conserve energy, the firmware includes a configurable sleep schedule (recommended for nighttime use). During the configured sleep period, the device is completely unavailable.
+
+1. Use synchronous DC-DC converters
+    For maximum efficiency, prefer synchronous DC-DC converters over non-synchronous designs.
+2. Prefer step-down–only power architecture
+    When choosing the battery configuration, aim for a setup that requires only buck (step-down) converters. They typically offer slightly higher efficiency than boost converters.
+3. Use the 5 V converter EN pin
+    Control the 5 V converter (powering the audio amplifier) via its EN pin to reduce idle power consumption.
+4. Remove indicator LEDs to minimize power draw
+    Disable or desolder all indicator LEDs to further reduce standby and idle power consumption.
+5. When integrating the device with external systems, reduce the frequency of status and battery polling whenever possible. 
+   Each server request — especially those involving audio output, ADC measurements, or filesystem access — increases overall power consumption.
+
+> **Testing flags notice**  
+> Enable the following flags in `platformio.ini` during testing and debugging.  
+> They must be disabled after testing to minimize power consumption.
+
+**Testing configuration:**
+```ini
+build_flags =
+    -DDEBUG_BUILD
+    -DARDUINO_USB_MODE=1
+    -DARDUINO_USB_CDC_ON_BOOT=1
+```
+**Production (low power) configuration:**
+```ini
+build_flags =
+    ; -DDEBUG_BUILD
+    -DARDUINO_USB_MODE=0
+    -DARDUINO_USB_CDC_ON_BOOT=0
+```
+
+## Other notes
+
+- Outdoor installation
+  
+    When using the device outdoors, a sealed enclosure is strongly recommended. If any connectors are exposed outside the enclosure, use appropriate protective caps or plugs. This helps minimize the risk of moisture and dust ingress and can also assist in maintaining a slightly higher internal temperature during cold conditions.
+- Lithium batteries and low temperatures
+
+    Lithium-ion batteries should not be used or stored in severe cold (below -20°C). Low temperatures degrade performance, increase internal resistance, and can lead to unsafe charging conditions.
+- NTC
+  
+    Since the device is designed for outdoor use, a 100 kΩ NTC thermistor is required. It signals the IC to disable charging when the temperature is below 0 °C and to reduce charging power below 10 °C, which is important when using Li-Ion batteries. The IP2326 IC is specifically designed to work with a 100 kΩ NTC, so NTC values other than 82–100 kΩ should not be used.
+- Do not power MAX98357A from 3.3 V.
+
+    Supplying the MAX98357A from 3.3 V significantly reduces reliability and may cause intermittent or hard-to-diagnose issues. Use a higher, recommended supply voltage.
+
 ## Installation
 
 1.  **Prepare Audio Files**: Place your `.wav` files (16-bit, 22050Hz recommended) inside the `data/` folder in your project root.
@@ -248,4 +312,4 @@ The node exposes a web server on port **80**.
     `http://<DEVICE_IP>/play?file=notification.wav`
 *   **Check Battery**:
     `http://<DEVICE_IP>/battery`
-    *Response:* `{"voltage":4.15,"percent":95.0}`
+    *Response:* `{raw":2715,"adc_voltage":1.658,"voltage":7.67,"percent":73.7}`
