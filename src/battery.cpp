@@ -7,11 +7,22 @@ void battery_init() {
     analogSetAttenuation(ADC_11db);
 }
 
+static float battery_correct_voltage(float v) {
+    if (v > BATT_CORR_HIGH_TH) {
+        return v * BATT_CORR_HIGH_K;
+    } else if (v > BATT_CORR_MID_TH) {
+        return v * BATT_CORR_MID_K;
+    } else {
+        return v * BATT_CORR_LOW_K;
+    }
+}
+
 float battery_get_voltage() {
     int raw = analogRead(BTR_ADC_PIN);
-    float adc_voltage = (raw / 4095.0f) * 3.6f; // ESP32 ADC ~0-3.6V
+    float adc_voltage = (raw / 4095.0f) * 2.5f; // ESP32 C3 ADC reference voltage is ~2.5V with 11dB attenuation
     float battery_voltage = adc_voltage * ((BATT_DIV_R1 + BATT_DIV_R2) / BATT_DIV_R2);
     battery_voltage *= BATT_CAL_FACTOR; // Apply calibration factor
+    battery_voltage = battery_correct_voltage(battery_voltage);
     return battery_voltage;
 }
 

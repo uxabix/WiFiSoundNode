@@ -5,12 +5,12 @@
 #include "http_server.h"
 #include "sleep_manager.h"
 #include "battery.h"
+#include "config.h"
 
 // -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 
-static constexpr uint16_t HTTP_PORT = 80;
 static constexpr size_t WAV_HEADER_SIZE = 44;
 
 // -----------------------------------------------------------------------------
@@ -191,10 +191,14 @@ void handle_stream_upload(
 
 // Handler for /battery endpoint, returns JSON with voltage and percentage
 void handle_battery(AsyncWebServerRequest* request) {
+    int raw = analogRead(BTR_ADC_PIN);
     float voltage = battery_get_voltage();
     float percent = battery_get_percentage();
+    float adc_voltage = (raw / 4095.0f) * 2.5f; // Raw ADC voltage before voltage divider
 
     String response = "{";
+    response += "\"raw\":" + String(raw) + ",";
+    response += "\"adc_voltage\":" + String(adc_voltage, 3) + ",";
     response += "\"voltage\":" + String(voltage, 2) + ",";
     response += "\"percent\":" + String(percent, 1);
     response += "}";

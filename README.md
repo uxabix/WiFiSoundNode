@@ -53,7 +53,167 @@ portable, autonomous, and energy-efficient audio applications.
 
 The application relies on a `include/config.h` file (not included in the repo, you must copy it from [config.h.example](include\config.h.example)) to define pinouts and settings.
 
+### Battery Configuration and Chemistry Considerations
 
+The default battery-related parameters in this project are tuned for a 2S Li-ion battery configuration (two cells in series):
+- Maximum voltage: 8.4 V
+- Nominal operating range: ~6.5–8.2 V
+- Critical shutdown threshold: ~5.8 V
+
+Many calibration values, including:
+- voltage divider ratio
+- ADC gain calibration
+- correction thresholds
+
+are selected with this configuration in mind.
+
+---
+
+### Using a different battery configuration or chemistry
+
+WiFiSoundNode is not limited to 2S Li-ion batteries.
+Other configurations (1S, 3S, LiFePO₄, NiMH, supercapacitors, etc.) are possible, but require recalculation of several parameters.
+
+When changing battery configuration, you must:
+
+1. Recalculate the voltage divider
+
+    The divider must ensure that the maximum battery voltage never exceeds the ADC input range (≈2.5 V with 11 dB attenuation on ESP32-C3).
+    ```
+    V_adc_max = V_batt_max × (R2 / (R1 + R2)) ≤ 2.5 V
+    ```
+Incorrect divider selection may:
+- saturate the ADC
+- reduce resolution
+- or permanently damage accuracy
+
+2. Update voltage thresholds
+
+    Battery voltage limits are chemistry-dependent and must be adjusted:
+    ```c
+    #define BATT_MAX_VOLTAGE       ...
+    #define BATT_MIN_VOLTAGE       ...
+    #define BATT_CRITICAL_VOLTAGE  ...
+    ```
+
+    Using incorrect thresholds may result in:
+    - incorrect battery percentage
+    - premature shutdown
+    - over-discharge
+    - reduced battery lifespan
+
+3. Recalibrate ADC coefficients
+
+After changing the divider or battery chemistry:
+- BATT_CAL_FACTOR must be recalibrated
+- Non-linearity correction thresholds may need adjustment
+
+Calibration should always be performed using real measurements, not theoretical values.
+
+#### Important note
+The ADC correction model assumes:
+- monotonic battery discharge
+- relatively slow voltage changes
+- DC measurement via a resistive divider
+
+If your application deviates from this (e.g. high load transients, switching noise, fast current spikes), additional filtering or averaging may be required.
+
+### ADC Calibration and Battery Voltage Accuracy
+
+ESP32 (including ESP32-C3) ADCs are known to have significant gain error and non-linear behavior, especially when using high attenuation levels (11 dB) required for battery voltage measurement.
+Without calibration, this can lead to incorrect battery readings and unreliable protection behavior.
+
+To address this, WiFiSoundNode implements a two-stage ADC calibration model.
+
+---
+
+#### Why calibration is required
+
+When measuring battery voltage:
+- The ADC reference voltage varies between chips
+- High attenuation introduces non-linearity
+- Errors increase noticeably at lower voltages
+- Uncalibrated readings may differ by 0.2–0.4 V
+
+This is critical because:
+- Battery percentage becomes inaccurate
+- Deep-sleep protection may trigger too early (wasting capacity)
+- Or too late (risking over-discharge)
+
+Calibration Model Overview
+### 1. Global Gain Calibration
+```c
+#define BATT_CAL_FACTOR  1.165f
+```
+This coefficient compensates systematic gain error caused by:
+- ADC reference voltage variation
+- Voltage divider tolerance
+- Board-specific analog characteristics
+
+How to calibrate:
+- Fully charge the battery (e.g. 8.40 V for 2S Li-ion)
+- Measure the voltage with a multimeter
+- Read the voltage reported by the device
+- Calculate:
+```
+BATT_CAL_FACTOR = V_real / V_measured
+```
+
+This factor is board-specific and should be tuned once per device.
+
+---
+
+### 2. ADC Non-Linearity Compensation
+```c
+#define BATT_CORR_HIGH_TH   7.8f
+#define BATT_CORR_MID_TH    6.8f
+
+#define BATT_CORR_HIGH_K    1.02f
+#define BATT_CORR_MID_K     1.03f
+#define BATT_CORR_LOW_K     1.04f
+```
+
+ESP32 ADCs are not linear across the full voltage range.
+Accuracy degrades noticeably at lower voltages.
+
+To compensate for this, a piecewise linear correction is applied:
+
+- High voltage range → minimal correction
+- Mid range → moderate correction
+- Low range → stronger correction
+
+This approach significantly improves accuracy without heavy computation or lookup tables.
+
+Correction Flow
+```c
+ADC raw value
+    ↓
+Voltage divider calculation
+    ↓
+Global gain calibration (BATT_CAL_FACTOR)
+    ↓
+Piecewise non-linearity compensation
+    ↓
+Final battery voltage
+```
+
+### What if you don’t want to calibrate?
+
+You can disable calibration by using:
+```c
+#define BATT_CAL_FACTOR  1.0f
+#define BATT_CORR_HIGH_K 1.0f
+#define BATT_CORR_MID_K  1.0f
+#define BATT_CORR_LOW_K  1.0f
+```
+
+⚠️ Important trade-offs:
+- Battery voltage will be approximate
+- Reported percentage may be inaccurate
+- Protection may trigger too early or too late
+- Behavior may differ between devices
+
+This is acceptable for non-critical or experimental setups, but not recommended for battery-powered or unattended operation.
 
 ## Installation
 

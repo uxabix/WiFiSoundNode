@@ -36,13 +36,20 @@
 
 #define BATT_MAX_VOLTAGE 8.4f    // Full charge voltage for 2S Li-ion (4.2V * 2)
 #define BATT_MIN_VOLTAGE 5.6f    // Minimum safe voltage for 2S Li-ion (~2.8V * 2)
-#define BATT_CRITICAL_VOLTAGE  6.0f // go to deep sleep if below
+#define BATT_CRITICAL_VOLTAGE  5.8f // go to deep sleep if below
 
 // Voltage divider (Ohms)
-#define BATT_DIV_R1      361000.0f // R1 from positive terminal to ADC
-#define BATT_DIV_R2      268000.0f // R2 from ADC to GND
+#define BATT_DIV_R1      271660.0f // R1 from positive terminal to ADC
+#define BATT_DIV_R2      94000.0f // R2 from ADC to GND
 
-#define BATT_CAL_FACTOR  0.961   // Coefficient to calibrate voltage readings (adjust based on measurements)
+// ADC correction coefficients
+#define BATT_CAL_FACTOR  1.165f   // Coefficient to calibrate voltage readings (adjust based on measurements)
+#define BATT_CORR_HIGH_TH   7.8f  // Volts, 2S Li-ion
+#define BATT_CORR_MID_TH    6.8f  // Volts, 2S Li-ion
+
+#define BATT_CORR_HIGH_K    1.02f
+#define BATT_CORR_MID_K     1.03f
+#define BATT_CORR_LOW_K     1.04f
 
 #define BATTERY_CHECK_INTERVAL_MS 60*60*1000 // Check battery every hour (3600000 ms)
 
