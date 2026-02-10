@@ -29,8 +29,17 @@ for battery-powered operation, achieving:
 This makes WiFiSoundNode suitable not only for BirdIdentifier, but also for
 portable, autonomous, and energy-efficient audio applications.
 
-
 **WiFiSoundNode** is an ESP32-based network audio player designed for efficiency and remote control. It plays `.wav` files stored on the internal filesystem (LittleFS) or streams raw audio data over WiFi. The project includes advanced power management features like battery monitoring and a scheduled "Night Mode" deep sleep.
+
+## Electrical Schematic
+
+> **Schematics files:**  
+> The KiCad schematic files are available in the folder: `KiCad Scheme/SoundNode/`  
+> Exported schematic images are available in the folder: `images/`
+
+The schematic below shows the main connections of the device, including the MCU, power management, sensors, and audio output.
+
+![Electrical Schematic](Images\SoundNode.svg)
 
 ## Features
 
@@ -48,6 +57,7 @@ portable, autonomous, and energy-efficient audio applications.
 *   **I2S Amplifier Module** (e.g., MAX98357A).
 *   **Speaker**.
 *   **Battery** (any type) with a voltage divider connected to an ADC pin (optional).
+*   **DC-DC converters**.
 
 ## Configuration
 

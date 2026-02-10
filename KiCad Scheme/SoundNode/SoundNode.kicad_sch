@@ -4,6 +4,12 @@
 	(generator_version "9.0")
 	(uuid "8df42c1d-221e-41b0-820c-0325a0ebfcd4")
 	(paper "A4")
+	(title_block
+		(title "Wi-Fi Sound Node")
+		(date "2026-02-10")
+		(rev "1.0")
+		(comment 1 "Author: Kiryl Alishkevich")
+	)
 	(lib_symbols
 		(symbol "CustomModules:2S-BMS-LiIon"
 			(exclude_from_sim no)
