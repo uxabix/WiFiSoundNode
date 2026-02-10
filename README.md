@@ -35,11 +35,11 @@ portable, autonomous, and energy-efficient audio applications.
 
 > **Schematics files:**  
 > The KiCad schematic files are available in the folder: `KiCad Scheme/SoundNode/`  
-> Exported schematic images are available in the folder: `images/`
+> Exported schematic images are available in the folder: `Images/`
 
 The schematic below shows the main connections of the device, including the MCU, power management, sensors, and audio output.
 
-![Electrical Schematic](Images\SoundNode.svg)
+![Electrical Schematic](Images/SoundNode.svg)
 
 ## Features
 
@@ -61,7 +61,7 @@ The schematic below shows the main connections of the device, including the MCU,
 
 ## Configuration
 
-The application relies on a `include/config.h` file (not included in the repo, you must copy it from [config.h.example](include\config.h.example)) to define pinouts and settings.
+The application relies on a `include/config.h` file (not included in the repo, you must copy it from [config.h.example](include/config.h.example)) to define pinouts and settings.
 
 ### Battery Configuration and Chemistry Considerations
 
