@@ -276,18 +276,31 @@ build_flags =
 
 ## Other notes
 
-- Outdoor installation
+- **Outdoor installation**
   
     When using the device outdoors, a sealed enclosure is strongly recommended. If any connectors are exposed outside the enclosure, use appropriate protective caps or plugs. This helps minimize the risk of moisture and dust ingress and can also assist in maintaining a slightly higher internal temperature during cold conditions.
-- Lithium batteries and low temperatures
+- **Lithium batteries and low temperatures**
 
     Lithium-ion batteries should not be used or stored in severe cold (below -20°C). Low temperatures degrade performance, increase internal resistance, and can lead to unsafe charging conditions.
-- NTC
+- **Battery performance in cold environments.**  
+  
+    Lithium battery capacity may decrease by up to 50% at low temperatures. This can significantly affect runtime and system behavior.
+- **NTC**
   
     Since the device is designed for outdoor use, a 100 kΩ NTC thermistor is required. It signals the IC to disable charging when the temperature is below 0 °C and to reduce charging power below 10 °C, which is important when using Li-Ion batteries. The IP2326 IC is specifically designed to work with a 100 kΩ NTC, so NTC values other than 82–100 kΩ should not be used.
-- Do not power MAX98357A from 3.3 V.
+- **Do not power MAX98357A from 3.3 V.**
+  
+  Supplying the MAX98357A from 3.3 V significantly reduces reliability and may cause intermittent or hard-to-diagnose issues. Use a higher, recommended supply voltage.
 
-    Supplying the MAX98357A from 3.3 V significantly reduces reliability and may cause intermittent or hard-to-diagnose issues. Use a higher, recommended supply voltage.
+- **Wi-Fi stability may vary between ESP32 units.**  
+  
+  Connection performance can differ significantly depending on the specific MCU. The firmware implements automatic reconnection attempts if the initial connection fails or if the connection is lost during operation. In rare cases, establishing a connection may take up to 30 minutes even when the signal quality is good. Consider this during testing. If this behavior is unacceptable, try using a different ESP32 module that demonstrates more stable connectivity.
+
+- **Wi-Fi reconnects after every deep sleep cycle.**  
+  After waking from deep sleep, the MCU performs a full reboot and reconnects to Wi-Fi. If connection time is critical, schedule wake-up time earlier (e.g., 30 minutes before the device is expected to be available).
+
+- **Low-voltage protection sleep behavior.**  
+  If the MCU enters low battery protection mode, it will sleep for the configured interval (10 minutes by default). After waking, it checks the battery level again and may return to sleep if the voltage is still below the threshold. Because of this delay, after connecting a charger it may take some time before the MCU detects a sufficient charge level and resumes normal operation.
 
 ## Installation
 

@@ -25,6 +25,7 @@ void setup() {
 
     delay(500); 
     battery_init();
+    battery_check_critical(); // Check battery at startup, will sleep if critical
 
     wifi_init();
     WiFi.setSleep(true);
