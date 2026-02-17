@@ -274,8 +274,37 @@ build_flags =
     -DARDUINO_USB_CDC_ON_BOOT=0
 ```
 
-## Other notes
 
+## ⚠ Grounding Note (Important)
+
+During testing it was discovered that improper ground routing can cause unstable or completely missing audio output, especially at lower input voltages.
+
+### Symptoms
+- Audio playback randomly stops or does not start.
+- Only a faint high-frequency noise is heard from the speaker.
+- Power rails (5V / 3.3V) appear stable on an oscilloscope.
+- The issue becomes worse when input voltage drops (e.g., 6–7V).
+
+### Root Cause
+The issue was caused by incorrect ground referencing between:
+- ESP32
+- I2S amplifier module
+- Separate DC-DC converters
+
+Even when powered from separate converters, all modules must share a properly connected and low-impedance common ground reference.
+
+If the grounds are not connected correctly (or connected through long/high-current paths), ground potential differences may occur. This can corrupt I2S signal levels and cause the amplifier to lose synchronization, resulting in muted output or noise.
+
+### Solution
+
+Use a star ground topology:
+- Connect ESP32 GND and amplifier GND together at a single, solid point.
+- Avoid routing signal ground through high-current paths (e.g., speaker return lines).
+- Keep ground connections short and low impedance.
+  
+After correcting the ground routing, stable audio playback was achieved even at lower input voltages.
+
+## Other notes
 - **Outdoor installation**
   
     When using the device outdoors, a sealed enclosure is strongly recommended. If any connectors are exposed outside the enclosure, use appropriate protective caps or plugs. This helps minimize the risk of moisture and dust ingress and can also assist in maintaining a slightly higher internal temperature during cold conditions.
